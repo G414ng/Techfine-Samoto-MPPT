@@ -1,0 +1,1 @@
+taruh file init, cpp dan h ke config/esphome/components/techfine_uart/

@@ -1,0 +1,77 @@
+
+external_components:
+  - source: 
+      type: local
+      path: components
+    components: [techfine_uart]
+
+uart:
+  id: uart_bus
+  tx_pin: 17
+  rx_pin: 16
+  baud_rate: 2400
+  parity: NONE
+  stop_bits: 1
+  data_bits: 8
+
+sensor:
+  - platform: template
+    id: pv_voltage
+    name: "PV Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+
+  - platform: template
+    id: batt_voltage
+    name: "Battery Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+
+  - platform: template
+    id: charge_current
+    name: "Charge Current"
+    unit_of_measurement: "A"
+    device_class: current
+
+  - platform: template
+    id: mcu_temp
+    name: "MCU Temp"
+    unit_of_measurement: "°C"
+    device_class: temperature
+
+  - platform: template
+    id: heatsink_temp
+    name: "Heatsink Temp"
+    unit_of_measurement: "°C"
+    device_class: temperature
+
+  - platform: template
+    id: daily_kwh
+    name: "Daily Energy"
+    unit_of_measurement: "kWh"
+    accuracy_decimals: 3
+    device_class: energy
+
+  - platform: template
+    id: total_kwh
+    name: "Total Energy"
+    unit_of_measurement: "kWh"
+    device_class: energy
+
+  - platform: template
+    id: pv_power
+    name: "PV Power"
+    unit_of_measurement: "W"
+    device_class: power
+
+techfine_uart:
+  uart_id: uart_bus
+
+  pv_voltage: pv_voltage
+  batt_voltage: batt_voltage
+  charge_current: charge_current
+  mcu_temp: mcu_temp
+  heatsink_temp: heatsink_temp
+  daily_kwh: daily_kwh
+  total_kwh: total_kwh
+  pv_power: pv_power

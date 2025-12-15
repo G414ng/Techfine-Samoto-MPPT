@@ -1,0 +1,139 @@
+# Globals
+globals:
+  - id: hex_buffer
+    type: std::string
+    restore_value: no
+    initial_value: ""
+  - id: rx_accum
+    type: std::string
+    restore_value: no
+    initial_value: ""
+
+# Raw frame text sensor
+text_sensor:
+  - platform: template
+    name: "Techfine Raw Frame"
+    id: techfine_raw
+    update_interval: never
+
+# Polling interval
+interval:
+  - interval: 3s
+    then:
+      - uart.write: !lambda |-
+          // Telemetry command from your Python script
+          static const uint8_t cmd[] = {0x43,0x4d,0x48,0x42,0x06,0x4d,0x50,0x50,0x54,0x48,0x42};
+          return std::vector<uint8_t>(cmd, cmd + sizeof(cmd));
+
+      - lambda: |-
+          int avail = id(uart_bus).available();
+          if (avail > 0) {
+            std::vector<uint8_t> buffer(avail);
+            id(uart_bus).read_array(buffer.data(), avail);
+
+            char b[3];
+            for (int i=0; i<avail; i++) {
+              sprintf(b, "%02x", buffer[i]);
+              id(rx_accum) += b;
+            }
+          }
+
+          if (id(rx_accum).size() > 512) {
+            id(rx_accum) = id(rx_accum).substr(id(rx_accum).size() - 512);
+          }
+
+          const std::string header = "4d564d";
+          size_t pos = id(rx_accum).rfind(header);
+
+          if (pos != std::string::npos) {
+            const size_t expected_hex_len = 124; // 62 bytes * 2
+            if (id(rx_accum).size() >= pos + expected_hex_len) {
+              std::string normalized = id(rx_accum).substr(pos, expected_hex_len);
+              id(techfine_raw).publish_state(normalized);
+              id(hex_buffer) = normalized;
+              id(rx_accum).erase(0, pos + expected_hex_len);
+            } else {
+              id(techfine_raw).publish_state("HEADER FOUND, INCOMPLETE");
+              id(hex_buffer).clear();
+            }
+          } else {
+            id(techfine_raw).publish_state("NO DATA");
+            id(hex_buffer).clear();
+          }
+
+# Sensors mapped from addressing table
+sensor:
+  - platform: template
+    name: "Techfine Battery Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 42) return NAN;
+      int low  = strtol(id(hex_buffer).substr(38,2).c_str(), nullptr, 16);
+      int high = strtol(id(hex_buffer).substr(40,2).c_str(), nullptr, 16);
+      return (high*256 + low) / 10.0;
+
+  - platform: template
+    name: "Techfine Heatsink Temp"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 54) return NAN;
+      int low  = strtol(id(hex_buffer).substr(52,2).c_str(), nullptr, 16);
+      int high = strtol(id(hex_buffer).substr(54,2).c_str(), nullptr, 16);
+      return (high*256 + low) / 10.0;  // adjust if only one byte is valid
+
+  - platform: template
+    name: "Techfine MCU Temp"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 50) return NAN;
+      return strtol(id(hex_buffer).substr(48,2).c_str(), nullptr, 16);
+
+  - platform: template
+    name: "Techfine PV Voltage"
+    unit_of_measurement: "V"
+    device_class: voltage
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 34) return NAN;
+      return strtol(id(hex_buffer).substr(32,2).c_str(), nullptr, 16);
+
+  - platform: template
+    name: "Techfine Charge Current"
+    unit_of_measurement: "A"
+    device_class: current
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 48) return NAN;
+      return strtol(id(hex_buffer).substr(46,2).c_str(), nullptr, 16);
+
+  - platform: template
+    name: "Techfine Day Energy"
+    unit_of_measurement: "kWh"
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 62) return NAN;
+      int low  = strtol(id(hex_buffer).substr(56,2).c_str(), nullptr, 16);
+      int high = strtol(id(hex_buffer).substr(58,2).c_str(), nullptr, 16);
+      int point_low  = strtol(id(hex_buffer).substr(60,2).c_str(), nullptr, 16);
+      int point_high = strtol(id(hex_buffer).substr(62,2).c_str(), nullptr, 16);
+      float day = high*256 + low;
+      float point = point_high*256 + point_low;
+      return day + point/1000.0;
+
+  - platform: template
+    name: "Techfine Total Energy"
+    unit_of_measurement: "kWh"
+    lambda: |-
+      if (id(hex_buffer).empty()) return NAN;
+      if (id(hex_buffer).size() < 70) return NAN;
+      int low  = strtol(id(hex_buffer).substr(68,2).c_str(), nullptr, 16);
+      int high = strtol(id(hex_buffer).substr(70,2).c_str(), nullptr, 16);
+      int point = strtol(id(hex_buffer).substr(66,2).c_str(), nullptr, 16);
+      float total = high*256 + low;
+      return total + point/10.0;
